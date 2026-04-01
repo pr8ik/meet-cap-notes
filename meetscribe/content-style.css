@@ -32,10 +32,10 @@
 }
 
 .meetscribe-icon {
-  display: flex;
-  align-items: center;
-  color: #e39b55;
+  display: block;
   flex-shrink: 0;
+  border-radius: 4px;
+  object-fit: cover;
 }
 
 .meetscribe-text {

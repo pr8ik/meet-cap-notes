@@ -1,5 +1,20 @@
 // MeetScribe — Popup
 
+// Reuse an existing extension tab for a page instead of always opening a new one.
+// Matches on base path so viewer.html?key=X reuses an already-open viewer.html tab.
+async function openOrFocusTab(relPath) {
+  const norm    = relPath.replace(/^\.\.\//, '');
+  const fullUrl = chrome.runtime.getURL(norm);
+  const pattern = chrome.runtime.getURL(norm.split('?')[0]) + '*';
+  const [existing] = await chrome.tabs.query({ url: pattern });
+  if (existing) {
+    chrome.tabs.update(existing.id, { active: true, url: fullUrl });
+    chrome.windows.update(existing.windowId, { focused: true });
+  } else {
+    chrome.tabs.create({ url: fullUrl });
+  }
+}
+
 // Apply theme immediately (before DOMContentLoaded to avoid flash)
 chrome.storage.local.get(['settings'], r => {
   document.documentElement.setAttribute('data-theme', r.settings?.theme || 'dark');
@@ -15,11 +30,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderMeetings(meetings);
 
   document.getElementById('settings-btn').addEventListener('click', () => {
-    chrome.tabs.create({ url: '../settings/settings.html' });
+    openOrFocusTab('../settings/settings.html');
   });
 
   document.getElementById('dashboard-btn').addEventListener('click', () => {
-    chrome.tabs.create({ url: '../dashboard/dashboard.html' });
+    openOrFocusTab('../dashboard/dashboard.html');
   });
 
   document.getElementById('stop-btn').addEventListener('click', async () => {
@@ -117,7 +132,7 @@ function renderMeetingRow(m) {
 }
 
 function openTranscript(key) {
-  chrome.tabs.create({ url: `../transcript/viewer.html?key=${encodeURIComponent(key)}` });
+  openOrFocusTab(`../transcript/viewer.html?key=${encodeURIComponent(key)}`);
 }
 window.openTranscript = openTranscript;
 

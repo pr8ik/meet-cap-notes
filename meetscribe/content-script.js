@@ -32,6 +32,26 @@ const SEL = {
 
 const SYSTEM_MSG = /^(you (have |'ve )?(joined|left|ended)|return(ing)? to home|leave call|audio and video|learn more|recording (start|stop)|is presenting|you're the only|waiting for other|someone has joined|you've been admitted|your (camera|microphone|hand|video) is|turning on captions|captions are now|live caption|no one else is here|people in this call|this call is being recorded|call ended|microphone \(|speakers \(|integrated webcam|in \d+ (second|minute)|others might still|you are the first)/i;
 
+// Detects Google Meet UI panels scraped alongside captions:
+// the caption-settings overlay (language list, font controls, scroll button).
+function isUIContent(text) {
+  if (!text) return false;
+  // The language dropdown starts with the Material Icon name "language" immediately
+  // followed by a capital letter (no space) — e.g. "languageNepali (Nepal)Afrikaans…"
+  if (/^language[A-Z]/.test(text)) return true;
+  // The settings panel always ends with this scroll button label
+  if (/jump to bottom/i.test(text)) return true;
+  // Caption settings link
+  if (/open caption settings/i.test(text)) return true;
+  // The language list contains dozens of "BETA" labels — real captions never have more than 3
+  if ((text.match(/BETA/g) || []).length > 3) return true;
+  // Material icon names embedded in UI text (never appear in real speech)
+  if (/format_size|arrow_downward|arrow_upward/.test(text)) return true;
+  // Any single block longer than 500 chars is almost certainly UI, not a caption line
+  if (text.length > 500) return true;
+  return false;
+}
+
 const MEETING_ID_RE = /meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/;
 
 // ─── State ───────────────────────────────────────────────────────────
@@ -66,10 +86,32 @@ function getMeetingId() {
 }
 
 function getMeetingTitle() {
+  // 1. document.title is the most reliable source — Google Meet sets it to
+  //    "Meeting Name – Google Meet" during the call, with no duplication or
+  //    extraneous text from the page DOM.
+  const pageTitle = document.title?.trim();
+  if (pageTitle) {
+    const clean = pageTitle.replace(/\s*[-–—]\s*Google Meet\s*$/i, '').trim();
+    if (clean.length > 2 && !/^google meet$/i.test(clean) && !/left the meeting/i.test(clean)) {
+      return clean;
+    }
+  }
+
+  // 2. DOM selectors as fallback — take only text up to the first newline or
+  //    repeated segment to avoid capturing icon text / subtitles.
   for (const sel of SEL.meetingTitle.split(', ')) {
     const el = document.querySelector(sel);
-    if (el?.textContent?.trim()) return el.textContent.trim();
+    if (el?.textContent?.trim()) {
+      // Use the first line of text only (avoids "TitleTitlemeeting_roomSubtitle" concatenation)
+      const raw = el.textContent.trim();
+      const firstLine = raw.split(/\n|(?=[A-Z][a-z].*[A-Z])/)[0].trim();
+      const text = firstLine.length > 2 ? firstLine : raw;
+      if (text.length > 2 && text.length < 120 && !/left the meeting/i.test(text)) {
+        return text;
+      }
+    }
   }
+
   return getMeetingId();
 }
 
@@ -98,6 +140,7 @@ function getStorageKey() {
 // ─── System message filter (FIRST in pipeline) ──────────────────────
 function isSystemMessage(text) {
   if (!text || text.length < 3) return true;
+  if (isUIContent(text)) return true;
   return SYSTEM_MSG.test(text.trim());
 }
 
@@ -105,50 +148,56 @@ function isSystemMessage(text) {
 function extractCaptions() {
   const results = [];
 
+  // Helper: deduplicate multiple blocks from the same speaker.
+  // Google Meet keeps old + current blocks visible simultaneously, all
+  // containing cumulative text.  We keep only the LONGEST text per speaker
+  // (which is the most recent / most complete block).
+  function dedupeBlocks(blocks) {
+    const bestPerSpeaker = new Map();
+    for (const block of blocks) {
+      const speakerEl = block.querySelector(SEL.speakerName) || block.querySelector(SEL.speakerWrap);
+      const textEl = block.querySelector(SEL.captionText);
+      if (!textEl) continue;
+      const text = textEl.textContent?.trim();
+      const speaker = speakerEl?.textContent?.trim() || lastSpeaker;
+      if (!text || isSystemMessage(text)) continue;
+      const prev = bestPerSpeaker.get(speaker);
+      if (!prev || text.length > prev.text.length) {
+        bestPerSpeaker.set(speaker, { speaker, text });
+      }
+    }
+    return [...bestPerSpeaker.values()];
+  }
+
   // Strategy 1: Use .a4cQT > .nMcdL structure (primary)
   const region = document.querySelector(SEL.captionRegion);
   if (region) {
     const blocks = region.querySelectorAll(SEL.captionBlock);
-    for (const block of blocks) {
-      const speakerEl = block.querySelector(SEL.speakerName) || block.querySelector(SEL.speakerWrap);
-      const textEl = block.querySelector(SEL.captionText);
-      if (textEl) {
-        const text = textEl.textContent?.trim();
-        const speaker = speakerEl?.textContent?.trim() || lastSpeaker;
-        if (text && !isSystemMessage(text)) {
-          results.push({ speaker, text });
-        }
-      }
-    }
-    if (results.length > 0) return results;
+    const deduped = dedupeBlocks(blocks);
+    if (deduped.length > 0) return deduped;
   }
 
   // Strategy 2: Use [jsname="dsyhDe"] / .bj4p3b fallback
   const altContainers = document.querySelectorAll(`${SEL.captionJsname}, ${SEL.captionBlockAlt}`);
-  for (const container of altContainers) {
-    const speakerEl = container.querySelector(SEL.speakerName) || container.querySelector(SEL.speakerWrap);
-    const textEl = container.querySelector(SEL.captionText);
-    if (textEl) {
-      const text = textEl.textContent?.trim();
-      const speaker = speakerEl?.textContent?.trim() || lastSpeaker;
-      if (text && !isSystemMessage(text)) {
-        results.push({ speaker, text });
-      }
-    }
+  if (altContainers.length > 0) {
+    const deduped = dedupeBlocks(altContainers);
+    if (deduped.length > 0) return deduped;
   }
-  if (results.length > 0) return results;
 
-  // Strategy 3: Broad text-diff on caption region
+  // Strategy 3: Broad text-diff on caption region (delta-based)
   if (region) {
     const currentText = region.textContent?.trim() || '';
     if (currentText && currentText !== lastCaptionSnapshot) {
-      // Find what's new
-      const newPart = currentText.replace(lastCaptionSnapshot, '').trim();
+      // Extract only the new portion
+      let newPart = currentText;
+      if (lastCaptionSnapshot && currentText.startsWith(lastCaptionSnapshot)) {
+        newPart = currentText.slice(lastCaptionSnapshot.length).trim();
+      }
       if (newPart && !isSystemMessage(newPart) && newPart.length > 3) {
         results.push({ speaker: lastSpeaker, text: newPart });
       }
+      lastCaptionSnapshot = currentText;
     }
-    lastCaptionSnapshot = currentText;
   }
 
   return results;
@@ -160,6 +209,17 @@ function processCaptions(results) {
     if (isSystemMessage(text)) continue;
     handleCaption(speaker, text);
   }
+}
+
+// Returns the fraction of the shorter string that forms a common prefix.
+// Used to detect live speech-recognition corrections (Google Meet rewrites
+// earlier words while the speaker is still talking, breaking startsWith).
+function sharedPrefixRatio(a, b) {
+  const minLen = Math.min(a.length, b.length);
+  if (minLen === 0) return 0;
+  let i = 0;
+  while (i < minLen && a[i] === b[i]) i++;
+  return i / minLen;
 }
 
 function handleCaption(speaker, text) {
@@ -176,28 +236,68 @@ function handleCaption(speaker, text) {
   if (!existing) {
     activeSegments.set(speaker, { speaker, text, timestamp: now });
   } else if (text === existing.text) {
-    return; // Exact duplicate
-  } else if (text.startsWith(existing.text) || text.length > existing.text.length + 3) {
-    existing.text = text; // Growing text
+    return; // Exact duplicate — no-op
+  } else if (text.startsWith(existing.text)) {
+    existing.text = text; // Clean cumulative growth — extend
+  } else if (existing.text.startsWith(text)) {
+    return; // Stale shorter block still in DOM — ignore
+  } else if (sharedPrefixRatio(existing.text, text) >= 0.6) {
+    // STT correction: Google rewrote an earlier word but kept most of the
+    // sentence intact. Silently update — do NOT flush, this is the same
+    // utterance being corrected in real-time.
+    existing.text = text;
   } else {
-    flushSegment(existing); // New sentence
+    // Genuinely new sentence / speaker pause
+    flushSegment(existing);
     activeSegments.set(speaker, { speaker, text, timestamp: now });
   }
 
   lastSpeaker = speaker;
 }
 
+// Tracks the last flushed cumulative text per speaker so we only store deltas
+const lastFlushedText = new Map();
+
 function flushSegment(seg) {
   if (isSystemMessage(seg.text)) return;
 
+  const prevFlushed = lastFlushedText.get(seg.speaker) || '';
+  let textToStore = seg.text;
+
+  if (prevFlushed) {
+    if (seg.text.startsWith(prevFlushed)) {
+      // Clean cumulative growth — store only the new tail
+      textToStore = seg.text.slice(prevFlushed.length).trim();
+    } else if (prevFlushed === seg.text || prevFlushed.startsWith(seg.text)) {
+      // Already stored this text or a superset — skip
+      return;
+    } else if (sharedPrefixRatio(prevFlushed, seg.text) >= 0.6) {
+      // The previous flush was an STT draft that got corrected. Find where
+      // the two versions diverge (last word boundary before divergence) and
+      // store only the tail from the final corrected version.
+      const minLen = Math.min(prevFlushed.length, seg.text.length);
+      let i = 0;
+      while (i < minLen && prevFlushed[i] === seg.text[i]) i++;
+      // Walk back to the nearest word boundary so we don't cut mid-word
+      while (i > 0 && seg.text[i - 1] !== ' ') i--;
+      textToStore = seg.text.slice(i).trim();
+      if (!textToStore) return; // nothing genuinely new
+    }
+    // else: genuinely new sentence — store everything
+  }
+
+  if (!textToStore || textToStore.length < 2) return;
+
+  lastFlushedText.set(seg.speaker, seg.text);
+
   buffer.push({
     speaker: seg.speaker,
-    text: seg.text,
+    text: textToStore,
     timestamp: new Date(seg.timestamp).toISOString(),
     offsetSeconds: meetingStartTime ? Math.round((seg.timestamp - meetingStartTime) / 1000) : 0
   });
   totalCaptured++;
-  log(`[${totalCaptured}] ${seg.speaker}: ${seg.text.substring(0, 80)}`);
+  log(`[${totalCaptured}] ${seg.speaker}: ${textToStore.substring(0, 80)}`);
 
   if (buffer.length > MAX_BUFFER) flushToStorage();
 }
@@ -280,7 +380,7 @@ async function flushToStorage() {
         entries,
         metadata: {
           meetingId: getMeetingId(),
-          title: getMeetingTitle(),
+          title: state.title || getMeetingTitle(),
           participants: getParticipants(),
           startTime: meetingStartTime ? new Date(meetingStartTime).toISOString() : null,
         }
@@ -304,7 +404,7 @@ function connectPort() {
 function reconnectPort() { if (!port && isCapturing) connectPort(); }
 
 // ─── State ───────────────────────────────────────────────────────────
-const state = { storageKey: null };
+const state = { storageKey: null, title: null };
 
 // ─── Meeting detection (waiting room vs actual meeting) ──────────────
 function startMeetingDetector() {
@@ -342,6 +442,7 @@ function requestCapture() {
   state.storageKey = getStorageKey();
   buffer = [];
   activeSegments.clear();
+  lastFlushedText.clear();
   captionsSeen = false;
   totalCaptured = 0;
   lastCaptionSnapshot = '';
@@ -373,6 +474,15 @@ function requestCapture() {
 
 function beginRealCapture() {
   // Actually start observing captions (only called when in-meeting)
+
+  // Cache title NOW (while still in the live meeting page) and again after 3s
+  // in case document.title hasn't been set yet on fast joins.
+  state.title = getMeetingTitle();
+  setTimeout(() => {
+    const fresh = getMeetingTitle();
+    if (fresh !== getMeetingId()) state.title = fresh;
+  }, 3000);
+
   createWidget();
   updateWidget('waiting');
 
@@ -418,7 +528,7 @@ function stopCapture(reason = 'user_stopped') {
         meetingKey: state.storageKey, reason,
         endTime: new Date().toISOString(),
         meetingId: getMeetingId(),
-        title: getMeetingTitle(),
+        title: state.title,   // Always use cached title — page may have changed to exit screen
         participants: getParticipants()
       }
     });
@@ -514,14 +624,7 @@ function createBanner() {
   bannerEl.id = 'meetscribe-banner';
   bannerEl.innerHTML = `
     <div class="meetscribe-banner-inner">
-      <span class="meetscribe-icon">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-          <line x1="16" y1="13" x2="8" y2="13"/>
-          <line x1="16" y1="17" x2="8" y2="17"/>
-        </svg>
-      </span>
+      <img class="meetscribe-icon" src="${chrome.runtime.getURL('assets/logo.png')}" width="18" height="18" alt="MeetScribe">
       <span class="meetscribe-text">MeetScribe ready</span>
       <button class="meetscribe-btn meetscribe-btn-primary" id="meetscribe-start">Start Capture</button>
       <button class="meetscribe-btn meetscribe-btn-secondary" id="meetscribe-skip">Skip</button>
@@ -585,8 +688,8 @@ window.addEventListener('beforeunload', () => {
   if (!isCapturing) return;
   flushAllActive();
   try {
-    chrome.runtime.sendMessage({ type: 'FLUSH_BUFFER', payload: { meetingKey: state.storageKey, entries: buffer, metadata: { meetingId: getMeetingId(), title: getMeetingTitle(), participants: getParticipants(), startTime: meetingStartTime ? new Date(meetingStartTime).toISOString() : null } } });
-    chrome.runtime.sendMessage({ type: 'CAPTURE_STOPPED', payload: { meetingKey: state.storageKey, reason: 'tab_closed', endTime: new Date().toISOString(), meetingId: getMeetingId(), title: getMeetingTitle(), participants: getParticipants() } });
+    chrome.runtime.sendMessage({ type: 'FLUSH_BUFFER', payload: { meetingKey: state.storageKey, entries: buffer, metadata: { meetingId: getMeetingId(), title: state.title, participants: getParticipants(), startTime: meetingStartTime ? new Date(meetingStartTime).toISOString() : null } } });
+    chrome.runtime.sendMessage({ type: 'CAPTURE_STOPPED', payload: { meetingKey: state.storageKey, reason: 'tab_closed', endTime: new Date().toISOString(), meetingId: getMeetingId(), title: state.title, participants: getParticipants() } });
   } catch (e) { /* best effort */ }
 });
 

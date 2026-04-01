@@ -454,9 +454,16 @@ ${transcript}`;
 }
 
 // ─── Notification Click Handler ──────────────────────────────────────
-chrome.notifications.onClicked.addListener((notificationId) => {
-  chrome.tabs.create({
-    url: `transcript/viewer.html?key=${encodeURIComponent(notificationId)}`
-  });
+chrome.notifications.onClicked.addListener(async (notificationId) => {
+  const relPath = `transcript/viewer.html?key=${encodeURIComponent(notificationId)}`;
+  const fullUrl = chrome.runtime.getURL(relPath);
+  const pattern = chrome.runtime.getURL('transcript/viewer.html') + '*';
+  const [existing] = await chrome.tabs.query({ url: pattern });
+  if (existing) {
+    chrome.tabs.update(existing.id, { active: true, url: fullUrl });
+    chrome.windows.update(existing.windowId, { focused: true });
+  } else {
+    chrome.tabs.create({ url: fullUrl });
+  }
   chrome.notifications.clear(notificationId);
 });

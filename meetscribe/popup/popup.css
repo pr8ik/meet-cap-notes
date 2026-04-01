@@ -19,17 +19,12 @@ body { width: 360px; overflow-x: hidden; }
 }
 
 .wordmark-mark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   width: 24px;
   height: 24px;
-  background: var(--accent);
-  color: var(--text-inverse);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
   border-radius: var(--radius-sm);
-  letter-spacing: -0.5px;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .wordmark-text {

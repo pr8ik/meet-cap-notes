@@ -1,5 +1,19 @@
 // MeetScribe — Dashboard
 
+// Reuse an existing extension tab rather than always opening a new one.
+async function openOrFocusTab(relPath) {
+  const norm    = relPath.replace(/^\.\.\//, '');
+  const fullUrl = chrome.runtime.getURL(norm);
+  const pattern = chrome.runtime.getURL(norm.split('?')[0]) + '*';
+  const [existing] = await chrome.tabs.query({ url: pattern });
+  if (existing) {
+    chrome.tabs.update(existing.id, { active: true, url: fullUrl });
+    chrome.windows.update(existing.windowId, { focused: true });
+  } else {
+    chrome.tabs.create({ url: fullUrl });
+  }
+}
+
 chrome.storage.local.get(['settings'], r => {
   document.documentElement.setAttribute('data-theme', r.settings?.theme || 'dark');
 });
@@ -36,7 +50,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.getElementById('nav-settings').addEventListener('click', () => {
-    chrome.tabs.create({ url: '../settings/settings.html' });
+    openOrFocusTab('../settings/settings.html');
   });
 
   document.getElementById('export-all-btn').addEventListener('click', async () => {
@@ -139,7 +153,7 @@ function cardHtml(m) {
 }
 
 function openTranscript(key) {
-  chrome.tabs.create({ url: `../transcript/viewer.html?key=${encodeURIComponent(key)}` });
+  openOrFocusTab(`../transcript/viewer.html?key=${encodeURIComponent(key)}`);
 }
 
 function fmtDate(s) {
