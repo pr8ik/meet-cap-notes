@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="../design-system.css">
+  <link rel="stylesheet" href="viewer.css">
+  <title>MeetScribe — Transcript</title>
+</head>
+<body>
+  <div class="viewer">
+    <nav class="breadcrumb">
+      <a href="../dashboard/dashboard.html" class="back-link">&larr; All meetings</a>
+    </nav>
+    <!-- Header -->
+    <header class="viewer-header">
+      <div class="header-content">
+        <h1 id="meeting-title" class="title">Loading...</h1>
+        <div id="meeting-meta" class="meta"></div>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-primary btn-sm" id="summary-btn" disabled>AI Summary</button>
+        <div class="dropdown" id="export-dropdown">
+          <button class="btn btn-secondary btn-sm" id="export-btn">Export</button>
+          <div class="dropdown-menu" id="export-menu">
+            <button data-format="md">Markdown (.md)</button>
+            <button data-format="txt">Plain text (.txt)</button>
+            <button data-format="json">JSON (.json)</button>
+            <div class="dropdown-divider"></div>
+            <button id="copy-btn">Copy to clipboard</button>
+          </div>
+        </div>
+        <button class="btn btn-danger btn-sm" id="delete-btn">Delete</button>
+      </div>
+    </header>
+
+    <!-- Summary -->
+    <section class="summary hidden" id="summary-section">
+      <div class="summary-bar">
+        <span class="summary-label">AI Summary</span>
+        <button class="btn btn-ghost btn-sm" id="regenerate-btn">Regenerate</button>
+      </div>
+      <div id="summary-content" class="summary-body"></div>
+    </section>
+
+    <div class="summary-loading hidden" id="summary-loading">
+      <div class="spinner"></div>
+      <span>Generating summary...</span>
+    </div>
+
+    <!-- Transcript -->
+    <section class="transcript" id="transcript"></section>
+  </div>
+
+  <script src="viewer.js"></script>
+</body>
+</html>

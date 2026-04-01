@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="../design-system.css">
+  <link rel="stylesheet" href="settings.css">
+  <title>MeetScribe — Settings</title>
+</head>
+<body>
+  <div class="settings">
+    <nav class="breadcrumb">
+      <a href="../dashboard/dashboard.html" class="back-link">&larr; All meetings</a>
+    </nav>
+    <header class="page-header">
+      <h1>Settings</h1>
+      <span class="version">v1.0.0</span>
+    </header>
+
+    <!-- General -->
+    <section class="group">
+      <button class="group-toggle open" data-section="general">
+        <span class="group-label">General</span>
+        <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="group-body open" id="section-general">
+        <div class="row">
+          <div class="row-info">
+            <label>Your name</label>
+            <p class="hint">Replaces "You" in transcripts with your actual name.</p>
+          </div>
+          <input type="text" id="display-name" class="input" style="width:180px" placeholder="e.g. Pratik">
+        </div>
+        <div class="row">
+          <div class="row-info">
+            <label>Theme</label>
+            <p class="hint">Visual appearance of MeetScribe pages.</p>
+          </div>
+          <select id="theme" class="select">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- Capture -->
+    <section class="group">
+      <button class="group-toggle open" data-section="capture">
+        <span class="group-label">Capture</span>
+        <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="group-body open" id="section-capture">
+        <div class="row">
+          <div class="row-info">
+            <label>Capture prompt</label>
+            <p class="hint">Show the "Start Capture / Skip" banner when you join a call.</p>
+          </div>
+          <label class="toggle"><input type="checkbox" id="auto-prompt" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="row">
+          <div class="row-info">
+            <label>Banner auto-dismiss</label>
+            <p class="hint">How long the prompt stays visible. "Never" keeps it until you act.</p>
+          </div>
+          <select id="banner-dismiss" class="select">
+            <option value="0">Never</option>
+            <option value="15000">15 seconds</option>
+            <option value="30000">30 seconds</option>
+            <option value="60000">1 minute</option>
+            <option value="300000">5 minutes</option>
+          </select>
+        </div>
+        <div class="row">
+          <div class="row-info">
+            <label>End-of-meeting notification</label>
+            <p class="hint">Chrome notification when a transcript is saved.</p>
+          </div>
+          <label class="toggle"><input type="checkbox" id="notify-on-end" checked><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Display -->
+    <section class="group">
+      <button class="group-toggle" data-section="display">
+        <span class="group-label">Transcript display</span>
+        <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="group-body" id="section-display">
+        <div class="row">
+          <div class="row-info">
+            <label>Speaker colours</label>
+            <p class="hint">Unique colour per speaker for easier scanning.</p>
+          </div>
+          <label class="toggle"><input type="checkbox" id="speaker-colours" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="row">
+          <div class="row-info">
+            <label>Timestamps</label>
+            <p class="hint">Show time next to each entry.</p>
+          </div>
+          <label class="toggle"><input type="checkbox" id="show-timestamps" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="row">
+          <div class="row-info">
+            <label>Default export format</label>
+          </div>
+          <select id="default-export" class="select">
+            <option value="md">Markdown</option>
+            <option value="txt">Plain text</option>
+            <option value="json">JSON</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI -->
+    <section class="group">
+      <button class="group-toggle" data-section="ai">
+        <span class="group-label">AI summary</span>
+        <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="group-body" id="section-ai">
+        <div class="callout">
+          Summaries use the Anthropic Claude API with your own key. Transcripts are only sent when you explicitly click "AI Summary" &mdash; never automatically.
+        </div>
+        <div class="row">
+          <div class="row-info">
+            <label>API key</label>
+            <p class="hint">Stored locally. Never leaves your browser except to Anthropic.</p>
+          </div>
+          <div class="input-pair">
+            <input type="password" id="api-key" class="input" style="width:200px" placeholder="sk-ant-...">
+            <button class="btn btn-ghost btn-sm" id="toggle-key">Show</button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="row-info">
+            <label>Model</label>
+            <p class="hint">Sonnet is more thorough. Haiku is faster and cheaper.</p>
+          </div>
+          <select id="claude-model" class="select">
+            <option value="claude-sonnet-4-20250514">Claude Sonnet</option>
+            <option value="claude-haiku-4-5-20251001">Claude Haiku</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- Data -->
+    <section class="group">
+      <button class="group-toggle" data-section="data">
+        <span class="group-label">Data</span>
+        <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="group-body" id="section-data">
+        <div class="row">
+          <div class="row-info">
+            <label>Storage</label>
+            <p class="hint"><span id="meeting-count">0</span> meetings &middot; <span id="storage-size">calculating...</span></p>
+          </div>
+        </div>
+        <div class="row-actions">
+          <button class="btn btn-secondary btn-sm" id="export-all">Export all data</button>
+          <button class="btn btn-danger btn-sm" id="clear-all">Clear all data</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Save -->
+    <div class="save-bar">
+      <span class="save-msg hidden" id="save-status">Saved</span>
+      <button class="btn btn-primary" id="save-btn">Save settings</button>
+    </div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>
